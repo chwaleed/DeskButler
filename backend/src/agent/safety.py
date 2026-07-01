@@ -1,9 +1,12 @@
 """Guardrails — the trust boundary for anything the agent touches on disk."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from agent.settings import load_settings
+from send2trash import send2trash
+
+from agent.settings import app_data_dir, load_settings
 
 
 class PathNotAllowed(Exception):
@@ -37,3 +40,15 @@ def resolve_and_check(path: str, roots: list[str] | None = None) -> Path:
             return resolved
 
     raise PathNotAllowed(f"path outside allowed roots: {resolved}")
+
+
+def recycle_delete(path: Path) -> None:
+    """Send a file to the Recycle Bin (recoverable), never a permanent delete."""
+    send2trash(str(path))
+
+
+def audit(entry: dict) -> None:
+    """Append one JSON line to the persistent audit log in app-data."""
+    line = json.dumps(entry, ensure_ascii=False)
+    with (app_data_dir() / "audit.log").open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")

@@ -72,3 +72,20 @@ def test_audit_appends_json_line(tmp_path, monkeypatch):
     lines = (tmp_path / "audit.log").read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
     assert json.loads(lines[0])["tool"] == "move_file"
+
+
+def test_move_file_dry_run_does_not_move(tmp_path, monkeypatch):
+    from agent import tools
+    root = tmp_path / "Downloads"
+    root.mkdir()
+    src = root / "a.txt"
+    src.write_text("x")
+    dst = root / "b.txt"
+    monkeypatch.setattr("agent.tools.dry_run", lambda: True)
+    monkeypatch.setattr(
+        "agent.safety.load_settings",
+        lambda: type("S", (), {"allowed_roots": [str(root)], "dry_run": True})(),
+    )
+    result = tools.move_file.invoke({"src": str(src), "dst": str(dst)})
+    assert "dry-run" in result.lower()
+    assert src.exists() and not dst.exists()

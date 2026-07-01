@@ -6,7 +6,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from agent.safety import PathNotAllowed, audit, resolve_and_check
+from agent.safety import PathNotAllowed, audit, dry_run, resolve_and_check
 
 FORBIDDEN_DST_EXT = {".exe", ".dll", ".bat", ".cmd", ".ps1", ".scr", ".lnk"}
 
@@ -41,6 +41,9 @@ def move_file(src: str, dst: str) -> str:
     if dst_p.exists():
         audit({"tool": "move_file", "src": str(src_p), "dst": str(dst_p), "result": "denied", "error": "destination exists"})
         return f"Denied: destination already exists ({dst_p})"
+    if dry_run():
+        audit({"tool": "move_file", "src": str(src_p), "dst": str(dst_p), "result": "dry-run"})
+        return f"[dry-run] would move {src_p.name} to {dst_p}"
     dst_p.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src_p), str(dst_p))
     audit({"tool": "move_file", "src": str(src_p), "dst": str(dst_p), "result": "ok"})

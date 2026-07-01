@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatThread, type Msg } from "./components/ChatThread";
 import { ActionLog } from "./components/ActionLog";
 import { ApprovalModal, type Req } from "./components/ApprovalModal";
@@ -11,6 +11,7 @@ export default function App() {
   const [approval, setApproval] = useState<Req | null>(null);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     onAgentEvent((e: AgentEvent) => {
@@ -25,6 +26,10 @@ export default function App() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, approval]);
 
   async function submit() {
     if (!input.trim() || busy) return;
@@ -41,18 +46,47 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", gap: 16, padding: 16 }}>
-      <div style={{ flex: 2 }}>
-        <ChatThread messages={messages} />
-        <ApprovalModal request={approval} onApprove={() => decide("approve")} onReject={() => decide("reject")} />
-        <div>
-          <input value={input} onChange={(e) => setInput(e.target.value)} disabled={busy} placeholder="Ask me to list or move files…" />
+    <div style={{ display: "flex", height: "100vh" }}>
+      {/* Conversation column */}
+      <div style={{ flex: 2, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontWeight: 600 }}>
+          DeskButler {busy && <span style={{ color: "var(--muted)", fontWeight: 400 }}>· working…</span>}
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+          {messages.length === 0 && (
+            <p style={{ color: "var(--muted)" }}>
+              Ask me to list a folder or move a file. Try: “list my Downloads”.
+            </p>
+          )}
+          <ChatThread messages={messages} />
+          <ApprovalModal request={approval} onApprove={() => decide("approve")} onReject={() => decide("reject")} />
+          <div ref={endRef} />
+        </div>
+        <div style={{ display: "flex", gap: 8, padding: 16, borderTop: "1px solid var(--border)" }}>
+          <input
+            style={{ flex: 1 }}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            disabled={busy}
+            placeholder="Ask me to list or move files…"
+          />
           <button onClick={submit} disabled={busy}>Send</button>
-          {busy && <button onClick={() => { cancel(); setBusy(false); }}>Stop</button>}
+          {busy && (
+            <button
+              style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
+              onClick={() => { cancel(); setBusy(false); }}
+            >
+              Stop
+            </button>
+          )}
         </div>
       </div>
-      <div style={{ flex: 1 }}>
+
+      {/* Activity + settings rail */}
+      <div style={{ flex: 1, minWidth: 260, borderLeft: "1px solid var(--border)", padding: 16, overflowY: "auto", background: "var(--surface)" }}>
         <ActionLog steps={steps} />
+        <div style={{ height: 24 }} />
         <SettingsPanel />
       </div>
     </div>

@@ -9,7 +9,19 @@ A local Windows desktop agent that manages files via natural language. Runs enti
 - Node.js + npm for the frontend.
 - [Ollama](https://ollama.com) running locally with a model pulled: `ollama pull qwen3.5:2b`.
 
-## Run (development)
+## Run
+
+One command from the repo root builds the frontend and launches the app:
+
+```bash
+run.cmd     # Windows (double-click or run in a terminal)
+./run.sh    # Git Bash / WSL / macOS
+```
+
+If your system drive (`C:`) is out of space, uncomment the cache-redirect lines
+near the top of the script to point uv/npm at a drive that has room.
+
+### Or run the steps manually
 
 ```bash
 # frontend — build the static assets the window loads

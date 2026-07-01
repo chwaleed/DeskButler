@@ -52,3 +52,15 @@ def audit(entry: dict) -> None:
     line = json.dumps(entry, ensure_ascii=False)
     with (app_data_dir() / "audit.log").open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
+
+
+# The single place tool destructiveness is declared. Add "delete_file", "copy_file" later.
+DESTRUCTIVE: set[str] = {"move_file"}
+
+
+def is_destructive(tool_name: str) -> bool:
+    return tool_name in DESTRUCTIVE
+
+
+def dry_run() -> bool:
+    return load_settings().dry_run

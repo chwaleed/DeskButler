@@ -1,9 +1,11 @@
 backend/.venv/
 .uv/
+.npm-cache/
 frontend/node_modules/
 frontend/dist/
 __pycache__/
 *.pyc
+*.egg-info/
 *.db
 audit.log
 .pytest_cache/

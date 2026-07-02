@@ -32,6 +32,9 @@ class Api:
     def cancel(self) -> None:
         self._runtime.cancel()
 
+    def new_chat(self) -> None:
+        self._runtime.new_chat()
+
     def get_settings(self) -> dict:
         return asdict(load_settings())
 

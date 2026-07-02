@@ -15,9 +15,6 @@ from agent.settings import app_data_dir
 
 log = get_logger("runtime")
 
-THREAD_ID = "main"
-
-
 class Runtime:
     def __init__(self, emit: Callable[[dict], None]):
         self._emit = emit
@@ -26,7 +23,20 @@ class Runtime:
         self._saver_cm = None
         self._busy = False
         self._current_turn: str | None = None
-        self._config = {"configurable": {"thread_id": THREAD_ID}, "recursion_limit": 50}
+        # A fresh conversation each app start, so old sessions don't pile into the
+        # model's context. new_chat() rolls a new one on demand.
+        self._thread_id = uuid.uuid4().hex
+
+    @property
+    def _config(self) -> dict:
+        return {"configurable": {"thread_id": self._thread_id}, "recursion_limit": 50}
+
+    def new_chat(self) -> None:
+        """Start a fresh conversation (clean context for the model)."""
+        self._thread_id = uuid.uuid4().hex
+        self._busy = False
+        self._current_turn = None
+        log.info("new chat — thread=%s", self._thread_id[:8])
 
     def start(self) -> None:
         ready = threading.Event()

@@ -10,6 +10,7 @@ import {
   approve,
   cancel,
   getSettings,
+  newChat as newChatApi,
   onAgentEvent,
   saveSettings,
   sendMessage,
@@ -80,7 +81,9 @@ export default function App() {
   }
 
   function newChat() {
+    newChatApi();
     setMessages([]);
+    setSteps([]);
     setApproval(null);
     setBusy(false);
     setView("activity");

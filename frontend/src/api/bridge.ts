@@ -51,6 +51,10 @@ export async function cancel(): Promise<void> {
   await ready();
   await window.pywebview!.api.cancel();
 }
+export async function newChat(): Promise<void> {
+  await ready();
+  await window.pywebview!.api.new_chat();
+}
 export async function getSettings(): Promise<Settings> {
   await ready();
   return window.pywebview!.api.get_settings() as Promise<Settings>;

@@ -107,3 +107,47 @@ def test_copy_file_copies_folder(sandbox):
     out = tools.copy_file.invoke({"src": str(root / "proj"), "dst": str(root / "proj2")})
     assert (root / "proj2" / "f.txt").read_text() == "x"
     assert "Copied" in out
+
+
+# ---- write_file ----
+
+def test_write_file_creates_text_file(sandbox):
+    root, _ = sandbox
+    target = root / "notes" / "todo.md"
+    out = tools.write_file.invoke({"path": str(target), "content": "# Todo\n- buy milk"})
+    assert target.read_text(encoding="utf-8") == "# Todo\n- buy milk"
+    assert "Wrote" in out
+
+
+def test_write_file_refuses_overwrite_without_flag(sandbox):
+    root, _ = sandbox
+    f = root / "keep.txt"
+    f.write_text("original")
+    out = tools.write_file.invoke({"path": str(f), "content": "clobbered"})
+    assert "Denied" in out
+    assert f.read_text() == "original"
+
+
+def test_write_file_overwrites_with_flag(sandbox):
+    root, _ = sandbox
+    f = root / "keep.txt"
+    f.write_text("original")
+    out = tools.write_file.invoke({"path": str(f), "content": "new", "overwrite": True})
+    assert f.read_text(encoding="utf-8") == "new"
+    assert "Wrote" in out
+
+
+def test_write_file_refuses_executable_extension(sandbox):
+    root, _ = sandbox
+    out = tools.write_file.invoke({"path": str(root / "evil.bat"), "content": "del /q *"})
+    assert "Denied" in out
+    assert not (root / "evil.bat").exists()
+
+
+def test_write_file_dry_run(sandbox):
+    root, settings = sandbox
+    settings.dry_run = True
+    target = root / "new.txt"
+    out = tools.write_file.invoke({"path": str(target), "content": "x"})
+    assert "[dry-run]" in out
+    assert not target.exists()

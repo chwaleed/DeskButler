@@ -203,4 +203,34 @@ def copy_file(src: str, dst: str) -> str:
     return f"Copied {src_p.name} to {dst_p}"
 
 
-TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file]
+@tool
+def write_file(path: str, content: str, overwrite: bool = False) -> str:
+    """Create a text file with the given content.
+
+    Fails if the file already exists unless overwrite=true (overwriting
+    requires the user's approval).
+    """
+    log.info("write_file(path=%r, %d chars, overwrite=%s)", path, len(content or ""), overwrite)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        log.warning("write_file DENIED: %s", e)
+        audit({"tool": "write_file", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if p.suffix.lower() in FORBIDDEN_DST_EXT:
+        audit({"tool": "write_file", "path": str(p), "result": "denied", "error": "forbidden extension"})
+        return f"Denied: refusing to write executable/script files ({p.suffix})"
+    if p.exists() and not overwrite:
+        audit({"tool": "write_file", "path": str(p), "result": "denied", "error": "exists"})
+        return f"Denied: file already exists ({p}). Pass overwrite=true to replace it."
+    if dry_run():
+        audit({"tool": "write_file", "path": str(p), "result": "dry-run"})
+        return f"[dry-run] would write {len(content)} characters to {p}"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    log.info("write_file OK: %s (%d chars)", p, len(content))
+    audit({"tool": "write_file", "path": str(p), "result": "ok", "chars": len(content), "overwrite": overwrite})
+    return f"Wrote {len(content)} characters to {p}"
+
+
+TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file]

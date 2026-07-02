@@ -31,10 +31,19 @@ def list_dir(path: str) -> str:
     if not target.is_dir():
         log.warning("list_dir: not a directory: %s", target)
         return f"Not a directory: {target}"
-    entries = sorted(p.name + ("/" if p.is_dir() else "") for p in target.iterdir())
+    items = sorted(target.iterdir(), key=lambda p: p.name.casefold())
+    dirs = sum(1 for p in items if p.is_dir())
+    entries = [p.name + ("/" if p.is_dir() else "") for p in items]
     log.info("list_dir OK: %s (%d entries)", target, len(entries))
     audit({"tool": "list_dir", "path": str(target), "result": "ok", "count": len(entries)})
-    return "\n".join(entries) if entries else "(empty)"
+    if not entries:
+        return "(empty)"
+    # Cap the listing: a huge dump overflows the model's context and derails it.
+    MAX = 120
+    shown = entries[:MAX]
+    header = f"{len(entries)} entries — {len(entries) - dirs} files, {dirs} folders"
+    tail = [f"…{len(entries) - MAX} more entries"] if len(entries) > MAX else []
+    return "\n".join([header, *shown, *tail])
 
 
 @tool

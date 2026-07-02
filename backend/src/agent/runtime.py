@@ -3,17 +3,26 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 import uuid
 from typing import Callable
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
+from agent import sessions
 from agent.graph import build_graph
 from agent.logs import get_logger
 from agent.settings import app_data_dir
 
 log = get_logger("runtime")
+
+MAX_STEP_OUT = 4000  # chars of tool output kept per activity step
+
+
+def _now() -> str:
+    return time.strftime("%H:%M:%S")
+
 
 class Runtime:
     def __init__(self, emit: Callable[[dict], None]):
@@ -24,7 +33,7 @@ class Runtime:
         self._busy = False
         self._current_turn: str | None = None
         # A fresh conversation each app start, so old sessions don't pile into the
-        # model's context. new_chat() rolls a new one on demand.
+        # model's context. new_chat() rolls a new one; open_chat() switches back.
         self._thread_id = uuid.uuid4().hex
 
     @property
@@ -37,6 +46,29 @@ class Runtime:
         self._busy = False
         self._current_turn = None
         log.info("new chat — thread=%s", self._thread_id[:8])
+
+    def list_chats(self) -> list[dict]:
+        return sessions.list_sessions()
+
+    def open_chat(self, thread_id: str) -> dict | None:
+        """Switch to a saved conversation and return its messages + activity steps."""
+        if self._busy:
+            log.warning("open_chat refused — a turn is in flight")
+            return None
+        self._thread_id = thread_id
+        fut = asyncio.run_coroutine_threadsafe(
+            self._graph.aget_state(self._config), self._loop
+        )
+        state = fut.result(timeout=15)
+        msgs = []
+        for m in state.values.get("messages", []):
+            text = m.content if isinstance(m.content, str) else str(m.content)
+            if isinstance(m, HumanMessage):
+                msgs.append({"role": "user", "text": text})
+            elif isinstance(m, AIMessage) and text and not m.tool_calls:
+                msgs.append({"role": "agent", "text": text})
+        log.info("open chat %s — %d messages", thread_id[:8], len(msgs))
+        return {"id": thread_id, "messages": msgs, "steps": sessions.get_steps(thread_id)}
 
     def start(self) -> None:
         ready = threading.Event()
@@ -68,6 +100,8 @@ class Runtime:
         self._current_turn = turn_id
         self._busy = True
         log.info("send turn=%s text=%r", turn_id[:8], text)
+        sessions.ensure_session(self._thread_id, title=text)
+        self._step(turn_id, f"you: {text[:60]}")
         asyncio.run_coroutine_threadsafe(self._run_turn(turn_id, text), self._loop)
         return turn_id
 
@@ -84,6 +118,14 @@ class Runtime:
         self._busy = False
         self._current_turn = None
 
+    def _step(self, turn_id: str, text: str, out: str | None = None) -> None:
+        """Record an activity step (persisted per session) and push it to the UI."""
+        step = {"t": _now(), "text": text}
+        if out:
+            step["out"] = out[:MAX_STEP_OUT]
+        sessions.append_step(self._thread_id, step)
+        self._emit({"type": "step", "turn_id": turn_id, **step})
+
     async def _run_turn(self, turn_id: str, text: str) -> None:
         await self._drive(turn_id, {"messages": [HumanMessage(text)]})
 
@@ -95,16 +137,19 @@ class Runtime:
                     name = event.get("name", "tool")
                     args = (event.get("data") or {}).get("input")
                     log.info("tool start: %s args=%s", name, args)
-                    self._emit({"type": "step", "turn_id": turn_id, "text": f"running {name}…"})
+                    self._step(turn_id, f"{name} {args}")
                 elif kind == "on_tool_end":
                     name = event.get("name", "tool")
-                    out = str((event.get("data") or {}).get("output", ""))
+                    output = (event.get("data") or {}).get("output", "")
+                    out = output.content if hasattr(output, "content") else str(output)
                     log.info("tool end: %s -> %s", name, out[:200])
+                    self._step(turn_id, f"{name} done", out=out)
             # After the stream, inspect state: paused (interrupt) or finished.
             state = await self._graph.aget_state(self._config)
             if state.tasks and any(t.interrupts for t in state.tasks):
                 intr = next(t.interrupts[0] for t in state.tasks if t.interrupts)
                 log.info("PAUSED for approval: %s", intr.value)
+                self._step(turn_id, "paused — waiting for approval")
                 self._emit({"type": "approval", "turn_id": turn_id, "request": intr.value})
                 return
             final = state.values["messages"][-1]

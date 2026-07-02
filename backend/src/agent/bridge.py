@@ -35,6 +35,12 @@ class Api:
     def new_chat(self) -> None:
         self._runtime.new_chat()
 
+    def list_chats(self) -> list:
+        return self._runtime.list_chats()
+
+    def open_chat(self, thread_id: str) -> dict | None:
+        return self._runtime.open_chat(thread_id)
+
     def get_settings(self) -> dict:
         return asdict(load_settings())
 

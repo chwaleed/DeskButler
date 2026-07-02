@@ -2,6 +2,8 @@ export type AgentEvent = {
   type: "step" | "approval" | "final" | "error";
   turn_id: string;
   text?: string;
+  t?: string; // step timestamp (HH:MM:SS), set by the backend
+  out?: string; // tool output for expandable console view
   request?: { tool: string; args: Record<string, unknown>; message: string };
 };
 
@@ -9,6 +11,14 @@ export type Settings = {
   allowed_roots: string[];
   model: string;
   dry_run: boolean;
+};
+
+export type ChatMeta = { id: string; title: string; updated: number };
+
+export type ChatData = {
+  id: string;
+  messages: { role: "user" | "agent"; text: string }[];
+  steps: { t: string; text: string; out?: string }[];
 };
 
 declare global {
@@ -54,6 +64,14 @@ export async function cancel(): Promise<void> {
 export async function newChat(): Promise<void> {
   await ready();
   await window.pywebview!.api.new_chat();
+}
+export async function listChats(): Promise<ChatMeta[]> {
+  await ready();
+  return window.pywebview!.api.list_chats() as Promise<ChatMeta[]>;
+}
+export async function openChat(id: string): Promise<ChatData | null> {
+  await ready();
+  return window.pywebview!.api.open_chat(id) as Promise<ChatData | null>;
 }
 export async function getSettings(): Promise<Settings> {
   await ready();

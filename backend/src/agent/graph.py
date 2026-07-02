@@ -14,23 +14,34 @@ from agent.settings import load_settings
 from agent.tools import TOOLS
 
 
-def _default_model():
+def _make_bound(model_name: str):
     from langchain_ollama import ChatOllama
 
-    # reasoning=False disables qwen3.5's thinking mode (Ollama `think: false`):
-    # faster, and a small model is steadier calling tools without a think preamble.
-    return ChatOllama(model=load_settings().model, reasoning=False)
+    # reasoning=False: no think preamble — a small model is steadier going straight
+    # to the tool call. temperature=0: deterministic tool calls. num_ctx=16384:
+    # Ollama's default 4k context overflows once a directory listing lands in the
+    # conversation, which makes the model return garbage or nothing.
+    return ChatOllama(
+        model=model_name, reasoning=False, temperature=0, num_ctx=16384
+    ).bind_tools(TOOLS)
 
 
 def build_graph(model=None, checkpointer=None):
-    model = model if model is not None else _default_model()
-    bound = model.bind_tools(TOOLS)
-    prompt = system_prompt(load_settings().allowed_roots)
+    # Settings are loaded per turn so edits (new allowed folder, model switch)
+    # apply immediately — no restart. Model instances are cached by name.
+    fixed_bound = model.bind_tools(TOOLS) if model is not None else None
+    bound_cache: dict = {}
 
     def call_model(state: MessagesState):
+        s = load_settings()
+        bound = fixed_bound
+        if bound is None:
+            if s.model not in bound_cache:
+                bound_cache[s.model] = _make_bound(s.model)
+            bound = bound_cache[s.model]
         msgs = state["messages"]
         if not any(isinstance(m, SystemMessage) for m in msgs):
-            msgs = [SystemMessage(prompt), *msgs]
+            msgs = [SystemMessage(system_prompt(s.allowed_roots)), *msgs]
         return {"messages": [bound.invoke(msgs)]}
 
     def route_after_model(state: MessagesState) -> Literal["safety_gate", "__end__"]:

@@ -10,19 +10,16 @@ import {
   approve,
   cancel,
   getSettings,
+  listChats,
   newChat as newChatApi,
   onAgentEvent,
+  openChat,
   saveSettings,
   sendMessage,
   type AgentEvent,
+  type ChatMeta,
   type Settings,
 } from "./api/bridge";
-
-function now() {
-  const p = (n: number) => String(n).padStart(2, "0");
-  const t = new Date();
-  return `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
-}
 
 export default function App() {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -32,6 +29,7 @@ export default function App() {
   const [lastStep, setLastStep] = useState("");
   const [input, setInput] = useState("");
   const [view, setView] = useState<RailView>("activity");
+  const [chats, setChats] = useState<ChatMeta[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -39,9 +37,9 @@ export default function App() {
     getSettings().then(setSettings);
     onAgentEvent((e: AgentEvent) => {
       if (e.type === "step") {
-        const text = e.text ?? "";
-        setSteps((s) => [...s, { t: now(), text }]);
-        setLastStep(text);
+        const step: Step = { t: e.t ?? "", text: e.text ?? "", out: e.out };
+        setSteps((s) => [...s, step]);
+        setLastStep(step.text);
       } else if (e.type === "approval") {
         setApproval((e.request as Req) ?? null);
       } else if (e.type === "final") {
@@ -62,7 +60,6 @@ export default function App() {
     const value = (text ?? input).trim();
     if (!value || busy || approval) return;
     setMessages((m) => [...m, { role: "user", text: value }]);
-    setSteps((s) => [...s, { t: now(), text: `you: ${value}` }]);
     setBusy(true);
     setInput("");
     const turnId = await sendMessage(value);
@@ -89,12 +86,27 @@ export default function App() {
     setView("activity");
   }
 
+  async function showChats() {
+    setChats(await listChats());
+    setView(view === "chats" ? "activity" : "chats");
+  }
+
+  async function handleOpenChat(id: string) {
+    if (busy) return;
+    const data = await openChat(id);
+    if (!data) return;
+    setMessages(data.messages);
+    setSteps(data.steps);
+    setApproval(null);
+    setView("activity");
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background text-foreground text-sm">
       <Titlebar
         busy={busy}
         dryRun={settings?.dry_run ?? false}
-        onChats={() => setView(view === "chats" ? "activity" : "chats")}
+        onChats={showChats}
         onNewChat={newChat}
         onSettings={() => setView(view === "settings" ? "activity" : "settings")}
       />
@@ -133,6 +145,8 @@ export default function App() {
           onView={setView}
           steps={steps}
           onClearLog={() => setSteps([])}
+          chats={chats}
+          onOpenChat={handleOpenChat}
           settings={settings}
           onSettingsChange={persist}
         />

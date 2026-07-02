@@ -1,8 +1,9 @@
-import { Activity, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Activity, ChevronDown, Trash2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 
-export type Step = { t: string; text: string };
+export type Step = { t: string; text: string; out?: string };
 
 export function ActivityLog({
   steps,
@@ -11,6 +12,8 @@ export function ActivityLog({
   steps: Step[];
   onClear: () => void;
 }) {
+  const [open, setOpen] = useState<Record<number, boolean>>({});
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
@@ -35,12 +38,30 @@ export function ActivityLog({
             </div>
           ) : (
             steps.map((s, i) => (
-              <div key={i} className="flex gap-2.5 items-baseline">
-                <span className="text-muted-foreground/50 text-[10.5px] shrink-0">
-                  {s.t}
-                </span>
-                <span className="text-muted-foreground/60 shrink-0">›</span>
-                <span className="break-all flex-1">{s.text}</span>
+              <div key={i}>
+                <div className="flex gap-2.5 items-baseline">
+                  <span className="text-muted-foreground/50 text-[10.5px] shrink-0">
+                    {s.t}
+                  </span>
+                  <span className="text-muted-foreground/60 shrink-0">›</span>
+                  <span className="break-all flex-1">{s.text}</span>
+                  {s.out && (
+                    <button
+                      onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}
+                      title="Terminal output"
+                      className="text-muted-foreground/60 hover:text-foreground cursor-pointer self-center shrink-0"
+                    >
+                      <ChevronDown
+                        className={`size-3 transition-transform ${open[i] ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                  )}
+                </div>
+                {s.out && open[i] && (
+                  <pre className="my-1 ml-5 bg-background border rounded-md px-2.5 py-2 overflow-x-auto text-muted-foreground text-[11px] leading-[1.7] whitespace-pre-wrap break-all">
+                    {s.out}
+                  </pre>
+                )}
               </div>
             ))
           )}

@@ -49,20 +49,29 @@ def build_graph(model=None, checkpointer=None):
 
     def safety_gate(state: MessagesState):
         last = state["messages"][-1]
-        rejections = []
-        for call in last.tool_calls:
-            if needs_approval(call["name"], call["args"] or {}) and not dry_run():
-                decision = interrupt(
-                    {"tool": call["name"], "args": call["args"], "message": f"Approve {call['name']}?"}
-                )
-                if isinstance(decision, dict) and decision.get("decision") == "reject":
-                    rejections.append(
-                        ToolMessage(content="Rejected by user.", tool_call_id=call["id"])
-                    )
-        # ponytail: partial mixes (some approved, some rejected in one message) aren't
-        # fully handled — ToolNode would still run every tool_call. Fine for the 2-tool
-        # base (single move_file per turn); revisit when a second destructive tool lands.
-        return {"messages": rejections}
+        # Collect every destructive call in this message and gate them as ONE group:
+        # a single interrupt, a single approve/reject. This is what makes a bulk move
+        # work — the 2B model emits several move_file calls in one message rather than
+        # one batch_move, and interrupting per-call dropped all but the first.
+        to_approve = [c for c in last.tool_calls if needs_approval(c["name"], c["args"] or {})]
+        if not to_approve or dry_run():
+            return {"messages": []}
+        decision = interrupt(
+            {
+                "actions": [{"tool": c["name"], "args": c["args"]} for c in to_approve],
+                "message": f"Approve {len(to_approve)} action{'s' if len(to_approve) != 1 else ''}?",
+            }
+        )
+        if isinstance(decision, dict) and decision.get("decision") == "reject":
+            # Reject the whole group: answer EVERY tool_call so none is left dangling
+            # (an unanswered tool_call makes the next model turn error).
+            return {
+                "messages": [
+                    ToolMessage(content="Rejected by user.", tool_call_id=c["id"])
+                    for c in last.tool_calls
+                ]
+            }
+        return {"messages": []}
 
     def route_after_gate(state: MessagesState) -> Literal["tools", "call_model"]:
         # If the last message is a ToolMessage (all rejected), skip ToolNode and let the model react.

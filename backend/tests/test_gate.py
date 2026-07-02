@@ -96,3 +96,66 @@ def test_batch_move_pauses_for_approval(monkeypatch):
     state = graph.get_state(config)
     assert state.next
     assert state.tasks and any(t.interrupts for t in state.tasks)
+
+
+def _model_two_moves_then_answers():
+    """Fake model: ONE message with two move_file calls (what the 2B model emits
+    for a bulk move instead of batch_move), then a final answer."""
+    two = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "move_file", "args": {"src": "a", "dst": "b"}, "id": "c1"},
+            {"name": "move_file", "args": {"src": "c", "dst": "d"}, "id": "c2"},
+        ],
+    )
+    return FakeToolModel(messages=iter([two, AIMessage(content="Done.")]))
+
+
+def test_multiple_destructive_calls_pause_once_with_all_actions(monkeypatch):
+    monkeypatch.setattr("agent.tools.shutil.move", lambda a, b: None)
+    monkeypatch.setattr("agent.tools.Path.exists", lambda self: False)
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.graph.dry_run", lambda: False)
+
+    graph = build_graph(model=_model_two_moves_then_answers(), checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "m1"}}
+    graph.invoke({"messages": [HumanMessage("move both")]}, config)
+    state = graph.get_state(config)
+    # Exactly ONE interrupt, and it carries BOTH actions (grouped approval).
+    interrupts = [iv for t in state.tasks for iv in t.interrupts]
+    assert len(interrupts) == 1
+    val = interrupts[0].value
+    assert [a["tool"] for a in val["actions"]] == ["move_file", "move_file"]
+    assert val["actions"][0]["args"] == {"src": "a", "dst": "b"}
+
+
+def test_grouped_approve_runs_every_call(monkeypatch):
+    moved = []
+    monkeypatch.setattr("agent.tools.shutil.move", lambda a, b: moved.append((a, b)))
+    monkeypatch.setattr("agent.tools.Path.exists", lambda self: False)
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.graph.dry_run", lambda: False)
+
+    graph = build_graph(model=_model_two_moves_then_answers(), checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "m2"}}
+    graph.invoke({"messages": [HumanMessage("move both")]}, config)
+    final = graph.invoke(Command(resume={"decision": "approve"}), config)
+    # One approval moved BOTH files — the multi-move data-loss bug is fixed.
+    assert len(moved) == 2
+    assert any(getattr(m, "content", "") == "Done." for m in final["messages"])
+
+
+def test_grouped_reject_runs_no_call(monkeypatch):
+    moved = []
+    monkeypatch.setattr("agent.tools.shutil.move", lambda a, b: moved.append((a, b)))
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.graph.dry_run", lambda: False)
+
+    graph = build_graph(model=_model_two_moves_then_answers(), checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "m3"}}
+    graph.invoke({"messages": [HumanMessage("move both")]}, config)
+    final = graph.invoke(Command(resume={"decision": "reject"}), config)
+    # Rejecting the group moves nothing, and every tool_call is answered so the
+    # model can continue (no dangling tool_calls).
+    assert moved == []
+    assert any(getattr(m, "content", "") == "Done." for m in final["messages"])

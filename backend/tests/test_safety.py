@@ -134,3 +134,5 @@ def test_system_prompt_teaches_batch_and_rename():
     assert r"C:\Users\x\Downloads" in p
     assert "batch_move" in p
     assert "rename" in p.lower()
+    # Must warn against bare filenames — the 2B model emits them and they don't resolve.
+    assert "bare" in p.lower()

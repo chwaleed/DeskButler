@@ -1,7 +1,27 @@
 import json
 import pytest
 from pathlib import Path
-from agent.safety import resolve_and_check, PathNotAllowed, recycle_delete, audit
+from agent.safety import resolve_and_check, resolve_allowed, PathNotAllowed, recycle_delete, audit
+
+
+def test_resolve_allowed_maps_loose_name_to_root(tmp_path):
+    root = tmp_path / "Downloads"
+    root.mkdir()
+    # A bare loose name matches the allowed root by basename (no cwd resolution).
+    assert resolve_allowed("Downloads", roots=[str(root)]) == root.resolve()
+    # "my downloads" and leading "root/" noise are tolerated too.
+    assert resolve_allowed("my downloads", roots=[str(root)]) == root.resolve()
+    (root / "a.txt").write_text("x")
+    assert resolve_allowed("root/Downloads/a.txt", roots=[str(root)]) == (root / "a.txt").resolve()
+
+
+def test_resolve_allowed_still_denies_real_escape(tmp_path):
+    root = tmp_path / "Downloads"
+    root.mkdir()
+    with pytest.raises(PathNotAllowed):
+        resolve_allowed("Secret", roots=[str(root)])  # no matching root
+    with pytest.raises(PathNotAllowed):
+        resolve_allowed(r"C:\Windows\system32", roots=[str(root)])  # absolute, outside
 
 
 def test_path_inside_root_is_allowed(tmp_path):

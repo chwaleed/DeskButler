@@ -21,6 +21,10 @@ echo [2/3] Syncing backend deps...
 cd backend
 call uv sync || goto :error
 
+REM Dev logging: prints every tool call, result, and error to this terminal.
+REM Uncomment the next line to enable.
+REM set "DESKBUTLER_DEV=1"
+
 echo [3/3] Launching app...
 call uv run python -m agent.main
 cd ..

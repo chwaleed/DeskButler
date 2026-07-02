@@ -17,5 +17,9 @@ echo "[1/3] Building frontend..."
 echo "[2/3] Syncing backend deps..."
 ( cd backend && uv sync )
 
+# Dev logging: set DESKBUTLER_DEV=1 to print every tool call, result, and error
+# to this terminal. Uncomment the next line to enable.
+# export DESKBUTLER_DEV=1
+
 echo "[3/3] Launching app..."
 ( cd backend && uv run python -m agent.main )

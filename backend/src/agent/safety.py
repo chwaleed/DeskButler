@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from send2trash import send2trash
 
+from agent.logs import get_logger
 from agent.settings import app_data_dir, load_settings
+
+log = get_logger("safety")
 
 
 class PathNotAllowed(Exception):
@@ -40,6 +44,43 @@ def resolve_and_check(path: str, roots: list[str] | None = None) -> Path:
             return resolved
 
     raise PathNotAllowed(f"path outside allowed roots: {resolved}")
+
+
+def _looks_absolute(raw: str) -> bool:
+    # Windows drive path (C:\...), UNC, or posix-absolute.
+    return bool(re.match(r"^[a-zA-Z]:[\\/]", raw)) or raw.startswith(("\\\\", "//", "/"))
+
+
+def resolve_allowed(path: str, roots: list[str] | None = None) -> Path:
+    """Resolve a tool path, tolerating the loose names a small model tends to emit.
+
+    A full path inside an allowed root works as before. A loose name — "Downloads",
+    "my documents", "root/Documents\\a.txt" — is matched to an allowed root by its
+    leading folder name, so relative guesses don't resolve against the backend's cwd
+    and get wrongly denied. Falls back to strict checking (which raises PathNotAllowed).
+    """
+    if path is None:
+        raise PathNotAllowed("no path given")
+    raw = str(path).strip().strip('"')
+    allowed = roots if roots is not None else load_settings().allowed_roots
+
+    if not _looks_absolute(raw):
+        # Split into segments on / or \, drop noise segments, match the first real
+        # segment against an allowed root's basename.
+        segs = [s for s in re.split(r"[\\/]+", raw) if s not in ("", ".", "root", "~")]
+        if segs:
+            # Strip leading noise words *within* the first segment ("my downloads" -> "downloads").
+            head_words = [w for w in segs[0].split() if w.lower() not in ("my", "the")]
+            head = head_words[-1] if head_words else segs[0]
+            rest = segs[1:]
+            for r in allowed:
+                root = Path(r)
+                if root.name.casefold() == head.casefold():
+                    candidate = root.joinpath(*rest) if rest else root
+                    log.info("resolve_allowed: %r -> matched root %s -> %s", raw, r, candidate)
+                    return resolve_and_check(str(candidate), roots)
+    # Absolute, or no loose match — strict check (raises if outside roots).
+    return resolve_and_check(raw, roots)
 
 
 def recycle_delete(path: Path) -> None:

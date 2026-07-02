@@ -8,6 +8,9 @@ import webview
 
 from agent.bridge import Api
 from agent.health import check_ollama
+from agent.logs import get_logger, setup_logging
+
+log = get_logger("main")
 
 _PLACEHOLDER = "<html><body style='font-family:sans-serif;padding:2rem'>Backend running. Build the frontend to see the UI.</body></html>"
 
@@ -18,9 +21,12 @@ def _frontend_entry() -> str:
 
 
 def main() -> None:
+    setup_logging()
     api = Api()
     ok, message = check_ollama()
+    log.info("ollama check: %s — %s", "ok" if ok else "FAILED", message)
     entry = _frontend_entry()
+    log.info("frontend entry: %s", entry)
     window = webview.create_window("AI Desktop Agent", entry, js_api=api, width=900, height=700)
     api.set_window(window)
     if not ok:

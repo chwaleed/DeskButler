@@ -30,7 +30,7 @@ def test_destructive_call_pauses_for_approval(monkeypatch):
     # Stub the tool executor so no real filesystem work happens.
     # Patch names where they are USED, not where they are defined.
     monkeypatch.setattr("agent.tools.shutil.move", lambda a, b: None)
-    monkeypatch.setattr("agent.tools.resolve_and_check", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
     monkeypatch.setattr("agent.graph.dry_run", lambda: False)
 
     graph = build_graph(model=_model_that_moves_then_answers(), checkpointer=InMemorySaver())
@@ -47,7 +47,7 @@ def test_reject_short_circuits_without_moving(monkeypatch):
     def fake_move(a, b):
         moved["called"] = True
     monkeypatch.setattr("agent.tools.shutil.move", fake_move)
-    monkeypatch.setattr("agent.tools.resolve_and_check", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
     monkeypatch.setattr("agent.graph.dry_run", lambda: False)
 
     graph = build_graph(model=_model_that_moves_then_answers(), checkpointer=InMemorySaver())
@@ -65,7 +65,7 @@ def test_approve_executes_the_move(monkeypatch):
         moved["called"] = True
     monkeypatch.setattr("agent.tools.shutil.move", fake_move)
     monkeypatch.setattr("agent.tools.Path.exists", lambda self: False)
-    monkeypatch.setattr("agent.tools.resolve_and_check", lambda p, roots=None: Path(p))
+    monkeypatch.setattr("agent.tools.resolve_allowed", lambda p, roots=None: Path(p))
     monkeypatch.setattr("agent.graph.dry_run", lambda: False)
 
     graph = build_graph(model=_model_that_moves_then_answers(), checkpointer=InMemorySaver())

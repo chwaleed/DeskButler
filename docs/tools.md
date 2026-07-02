@@ -35,25 +35,37 @@ overwriting) · 🔴 destructive (always gated).
 
 ---
 
-## Phase 0 — Shipped
+## Phase 0 + build-step 1 — Shipped
+
+Shipped and unit-tested (48 backend tests). The read-only and creating tools
+work end to end with the real qwen3.5:2b model. See the **Known gap** below
+for a gate limitation that affects multi-file moves.
 
 | Tool | Args | Does | Risk |
 |---|---|---|---|
 | `list_dir` | `path` | List folder contents, capped at 120 entries | 🟢 |
-| `move_file` | `src, dst` | Move/rename, fail-if-exists, forbidden-ext check | 🔴 |
-
-## Phase 1 — Core file operations
-
-The minimum set that makes "chat with my computer" feel real.
-
-| Tool | Args | Does | Risk |
-|---|---|---|---|
-| `copy_file` | `src, dst` | Copy file or folder; fail if destination exists | 🟡 |
-| `delete_file` | `path` | Send to Recycle Bin (send2trash) — never hard delete | 🔴 |
-| `create_folder` | `path` | `mkdir -p`; no-op if it exists | 🟡 |
-| `write_file` | `path, content, overwrite=false` | Create a text file ("create a shopping list on my Desktop") | 🟡 / 🔴 if overwrite |
 | `read_file` | `path` | Return text content, capped ~10 KB; refuse binaries | 🟢 |
-| `file_info` | `path` | Size, created/modified dates, type, hidden/readonly flags | 🟢 |
+| `file_info` | `path` | Size, created/modified dates, type, hidden flag | 🟢 |
+| `folder_stats` | `path` | Counts + total size grouped by extension, recursive, walk-capped | 🟢 |
+| `create_folder` | `path` | `mkdir -p`; no-op if it exists | 🟡 |
+| `write_file` | `path, content, overwrite=false` | Create a text file | 🟡 / 🔴 if overwrite |
+| `copy_file` | `src, dst` | Copy file or folder; fail if destination exists | 🟡 |
+| `move_file` | `src, dst` | Move/rename, fail-if-exists, forbidden-ext check | 🔴 |
+| `delete_file` | `path` | Send to Recycle Bin — never hard delete; refuses allowed-root itself | 🔴 |
+| `batch_move` | `moves` (list of `{src, dst}`) | Whole organize plan in ONE gated call; per-item skip-and-report; capped at 200 | 🔴 |
+
+**Known gap (needs a decision before this is "done"):** the safety gate
+interrupts once *per destructive tool call*. When the 2B model emits several
+`move_file` calls in a single message (which it does instead of `batch_move`
+more often than not), approving the first one drops the rest — files silently
+don't move. `batch_move` avoids this (one call, one approval) but the model
+doesn't reliably choose it. Fix options: (a) gate collects all destructive
+calls in a message and shows ONE grouped approval, (b) force bulk file ops
+through `batch_move` only. Both touch the gate + runtime event + approval UI.
+
+## Phase 1 — remaining core file operations
+
+None — all Phase 1 tools shipped above.
 
 Notes:
 - `rename_file` is deliberately absent — `move_file` already is rename. The
@@ -68,12 +80,13 @@ Notes:
 The headline feature: "organize my Downloads — images to Pictures,
 installers deleted, documents by year."
 
+`folder_stats` and `batch_move` already shipped (see build-step 1 above).
+Remaining:
+
 | Tool | Args | Does | Risk |
 |---|---|---|---|
-| `folder_stats` | `path` | Counts + total size grouped by extension/category; recursive | 🟢 |
 | `search_files` | `folder, pattern` | Recursive glob on names (`*.pdf`, `report*`), capped | 🟢 |
 | `search_content` | `folder, query` | Grep text files for a phrase, return path + matching line, capped | 🟢 |
-| `batch_move` | `moves` (list of `{src, dst}`) | Execute a whole organize plan in one gated call; creates missing dest folders; per-item skip-and-report on failure | 🔴 one approval for the whole batch |
 | `batch_delete` | `paths` | Recycle-bin many files in one gated call | 🔴 |
 | `find_duplicates` | `folder` | Hash-based duplicate report (report only — deleting is the user's next command) | 🟢 |
 

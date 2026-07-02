@@ -1,6 +1,7 @@
 """In-process agent tools. Guardrails run here — the trust boundary."""
 from __future__ import annotations
 
+import json
 import shutil
 import stat as stat_mod
 from datetime import datetime
@@ -307,4 +308,69 @@ def folder_stats(path: str) -> str:
     return "\n".join(lines)
 
 
-TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file, delete_file, folder_stats]
+@tool
+def batch_move(moves: list[dict] | str) -> str:
+    """Move MANY files in one call — use this instead of repeated move_file calls when organizing.
+
+    `moves` is a list of {"src": ..., "dst": ...} objects. One approval covers
+    the whole batch. Items that fail (missing source, destination exists,
+    outside allowed folders) are skipped and reported; the rest still move.
+    """
+    if isinstance(moves, str):
+        # ponytail: small models sometimes stringify the list — tolerate it.
+        try:
+            moves = json.loads(moves)
+        except json.JSONDecodeError:
+            return "Denied: moves must be a list of {src, dst} objects"
+    if not isinstance(moves, list) or not moves:
+        return "Denied: moves must be a non-empty list of {src, dst} objects"
+    MAX_BATCH = 200
+    if len(moves) > MAX_BATCH:
+        return f"Denied: too many moves in one batch ({len(moves)} > {MAX_BATCH})"
+    log.info("batch_move(%d moves)", len(moves))
+    dr = dry_run()
+    done: list[str] = []
+    skipped: list[str] = []
+    for m in moves:
+        src, dst = (m or {}).get("src"), (m or {}).get("dst")
+        try:
+            src_p = resolve_allowed(src)
+            dst_p = resolve_allowed(dst)
+        except PathNotAllowed as e:
+            skipped.append(f"{src}: denied ({e})")
+            continue
+        if dst_p.suffix.lower() in FORBIDDEN_DST_EXT:
+            skipped.append(f"{src_p.name}: forbidden destination extension")
+            continue
+        if not src_p.exists():
+            skipped.append(f"{src_p.name}: source not found")
+            continue
+        if dst_p.exists():
+            skipped.append(f"{src_p.name}: destination already exists")
+            continue
+        if dr:
+            done.append(f"[dry-run] {src_p.name} -> {dst_p}")
+            continue
+        dst_p.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_p), str(dst_p))
+        done.append(f"{src_p.name} -> {dst_p}")
+    log.info("batch_move OK: %d moved, %d skipped", len(done), len(skipped))
+    audit({"tool": "batch_move", "result": "dry-run" if dr else "ok",
+           "moved": len(done), "skipped": len(skipped)})
+    header = f"Moved {len(done)} of {len(moves)}." + (" (dry-run: nothing was changed)" if dr else "")
+    SHOW = 50  # cap the report, same reason list_dir caps
+    lines = [header, *done[:SHOW]]
+    if len(done) > SHOW:
+        lines.append(f"…{len(done) - SHOW} more")
+    if skipped:
+        lines.append(f"Skipped {len(skipped)}:")
+        lines += skipped[:SHOW]
+        if len(skipped) > SHOW:
+            lines.append(f"…{len(skipped) - SHOW} more")
+    return "\n".join(lines)
+
+
+TOOLS = [
+    list_dir, move_file, read_file, file_info, create_folder,
+    copy_file, write_file, delete_file, folder_stats, batch_move,
+]

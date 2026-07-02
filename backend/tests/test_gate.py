@@ -74,3 +74,25 @@ def test_approve_executes_the_move(monkeypatch):
     final = graph.invoke(Command(resume={"decision": "approve"}), config)
     assert moved["called"] is True
     assert any(getattr(m, "content", "") == "Done." for m in final["messages"])
+
+
+def _model_that_batch_moves_then_answers():
+    call = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "batch_move",
+            "args": {"moves": [{"src": "a.txt", "dst": "s/a.txt"}]},
+            "id": "call1",
+        }],
+    )
+    return FakeToolModel(messages=iter([call, AIMessage(content="Done.")]))
+
+
+def test_batch_move_pauses_for_approval(monkeypatch):
+    monkeypatch.setattr("agent.graph.dry_run", lambda: False)
+    graph = build_graph(model=_model_that_batch_moves_then_answers(), checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "t4"}}
+    graph.invoke({"messages": [HumanMessage("organize my downloads")]}, config)
+    state = graph.get_state(config)
+    assert state.next
+    assert state.tasks and any(t.interrupts for t in state.tasks)

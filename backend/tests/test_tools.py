@@ -222,3 +222,65 @@ def test_folder_stats_handles_no_extension(sandbox):
 def test_folder_stats_denies_outside_roots(sandbox):
     out = tools.folder_stats.invoke({"path": r"C:\Windows"})
     assert out.startswith("Denied:")
+
+
+# ---- batch_move ----
+
+def test_batch_move_moves_all(sandbox):
+    root, _ = sandbox
+    (root / "a.jpg").write_text("a")
+    (root / "b.jpg").write_text("b")
+    moves = [
+        {"src": str(root / "a.jpg"), "dst": str(root / "Pictures" / "a.jpg")},
+        {"src": str(root / "b.jpg"), "dst": str(root / "Pictures" / "b.jpg")},
+    ]
+    out = tools.batch_move.invoke({"moves": moves})
+    assert (root / "Pictures" / "a.jpg").exists()
+    assert (root / "Pictures" / "b.jpg").exists()
+    assert "Moved 2 of 2" in out
+
+
+def test_batch_move_skips_and_reports_failures(sandbox):
+    root, _ = sandbox
+    (root / "ok.txt").write_text("x")
+    (root / "taken.txt").write_text("x")
+    (root / "dest.txt").write_text("already here")
+    moves = [
+        {"src": str(root / "ok.txt"), "dst": str(root / "sorted" / "ok.txt")},
+        {"src": str(root / "ghost.txt"), "dst": str(root / "sorted" / "ghost.txt")},
+        {"src": str(root / "taken.txt"), "dst": str(root / "dest.txt")},
+        {"src": r"C:\Windows\win.ini", "dst": str(root / "win.ini")},
+    ]
+    out = tools.batch_move.invoke({"moves": moves})
+    assert (root / "sorted" / "ok.txt").exists()
+    assert (root / "taken.txt").exists()  # skipped, still in place
+    assert "Moved 1 of 4" in out
+    assert "Skipped 3" in out
+
+
+def test_batch_move_dry_run_touches_nothing(sandbox):
+    root, settings = sandbox
+    settings.dry_run = True
+    (root / "a.txt").write_text("x")
+    out = tools.batch_move.invoke(
+        {"moves": [{"src": str(root / "a.txt"), "dst": str(root / "s" / "a.txt")}]}
+    )
+    assert "[dry-run]" in out
+    assert (root / "a.txt").exists() and not (root / "s").exists()
+
+
+def test_batch_move_tolerates_json_string(sandbox):
+    import json
+    root, _ = sandbox
+    (root / "a.txt").write_text("x")
+    moves = json.dumps([{"src": str(root / "a.txt"), "dst": str(root / "s" / "a.txt")}])
+    out = tools.batch_move.invoke({"moves": moves})
+    assert (root / "s" / "a.txt").exists()
+    assert "Moved 1 of 1" in out
+
+
+def test_batch_move_rejects_empty_and_oversized(sandbox):
+    root, _ = sandbox
+    assert "Denied" in tools.batch_move.invoke({"moves": []})
+    too_many = [{"src": f"a{i}", "dst": f"b{i}"} for i in range(201)]
+    assert "Denied" in tools.batch_move.invoke({"moves": too_many})

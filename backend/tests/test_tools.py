@@ -151,3 +151,43 @@ def test_write_file_dry_run(sandbox):
     out = tools.write_file.invoke({"path": str(target), "content": "x"})
     assert "[dry-run]" in out
     assert not target.exists()
+
+
+# ---- delete_file ----
+
+def test_delete_file_sends_to_recycle_bin(sandbox, monkeypatch):
+    root, _ = sandbox
+    trashed = []
+    monkeypatch.setattr("agent.tools.recycle_delete", lambda p: trashed.append(str(p)))
+    f = root / "old.txt"
+    f.write_text("x")
+    out = tools.delete_file.invoke({"path": str(f)})
+    assert trashed == [str(f.resolve())]
+    assert "Recycle Bin" in out
+
+
+def test_delete_file_refuses_allowed_root_itself(sandbox, monkeypatch):
+    root, _ = sandbox
+    trashed = []
+    monkeypatch.setattr("agent.tools.recycle_delete", lambda p: trashed.append(str(p)))
+    out = tools.delete_file.invoke({"path": str(root)})
+    assert "Denied" in out
+    assert trashed == []
+
+
+def test_delete_file_dry_run(sandbox, monkeypatch):
+    root, settings = sandbox
+    settings.dry_run = True
+    trashed = []
+    monkeypatch.setattr("agent.tools.recycle_delete", lambda p: trashed.append(str(p)))
+    f = root / "old.txt"
+    f.write_text("x")
+    out = tools.delete_file.invoke({"path": str(f)})
+    assert "[dry-run]" in out
+    assert trashed == [] and f.exists()
+
+
+def test_delete_file_missing_path(sandbox):
+    root, _ = sandbox
+    out = tools.delete_file.invoke({"path": str(root / "ghost.txt")})
+    assert "Not found" in out

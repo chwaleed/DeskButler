@@ -88,6 +88,12 @@ def recycle_delete(path: Path) -> None:
     send2trash(str(path))
 
 
+def is_allowed_root(p: Path) -> bool:
+    """Is p exactly one of the configured allowed roots (not merely inside one)?"""
+    return any(str(p).casefold() == str(Path(r).resolve()).casefold()
+               for r in load_settings().allowed_roots)
+
+
 def audit(entry: dict) -> None:
     """Append one JSON line to the persistent audit log in app-data."""
     line = json.dumps(entry, ensure_ascii=False)

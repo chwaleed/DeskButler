@@ -9,7 +9,14 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from agent.logs import get_logger
-from agent.safety import PathNotAllowed, audit, dry_run, resolve_allowed
+from agent.safety import (
+    PathNotAllowed,
+    audit,
+    dry_run,
+    is_allowed_root,
+    recycle_delete,
+    resolve_allowed,
+)
 
 log = get_logger("tools")
 
@@ -233,4 +240,29 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
     return f"Wrote {len(content)} characters to {p}"
 
 
-TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file]
+@tool
+def delete_file(path: str) -> str:
+    """Delete a file or folder. It goes to the Recycle Bin (recoverable), never permanently erased. Destructive — requires approval."""
+    log.info("delete_file(path=%r)", path)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        log.warning("delete_file DENIED: %s", e)
+        audit({"tool": "delete_file", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if not p.exists():
+        audit({"tool": "delete_file", "path": str(p), "result": "not-found"})
+        return f"Not found: {p}"
+    if is_allowed_root(p):
+        audit({"tool": "delete_file", "path": str(p), "result": "denied", "error": "is allowed root"})
+        return f"Denied: refusing to delete an allowed folder itself ({p})"
+    if dry_run():
+        audit({"tool": "delete_file", "path": str(p), "result": "dry-run"})
+        return f"[dry-run] would send {p.name} to the Recycle Bin"
+    recycle_delete(p)
+    log.info("delete_file OK: %s", p)
+    audit({"tool": "delete_file", "path": str(p), "result": "ok"})
+    return f"Sent {p.name} to the Recycle Bin (recoverable)"
+
+
+TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file, delete_file]

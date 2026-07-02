@@ -9,7 +9,7 @@ from langgraph.prebuilt import ToolNode
 from langgraph.types import interrupt
 
 from agent.prompts import system_prompt
-from agent.safety import dry_run, is_destructive
+from agent.safety import dry_run, needs_approval
 from agent.settings import load_settings
 from agent.tools import TOOLS
 
@@ -51,7 +51,7 @@ def build_graph(model=None, checkpointer=None):
         last = state["messages"][-1]
         rejections = []
         for call in last.tool_calls:
-            if is_destructive(call["name"]) and not dry_run():
+            if needs_approval(call["name"], call["args"] or {}) and not dry_run():
                 decision = interrupt(
                     {"tool": call["name"], "args": call["args"], "message": f"Approve {call['name']}?"}
                 )

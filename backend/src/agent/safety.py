@@ -95,12 +95,19 @@ def audit(entry: dict) -> None:
         fh.write(line + "\n")
 
 
-# The single place tool destructiveness is declared. Add "delete_file", "copy_file" later.
-DESTRUCTIVE: set[str] = {"move_file"}
+# The single place tool destructiveness is declared.
+DESTRUCTIVE: set[str] = {"move_file", "delete_file", "batch_move"}
 
 
-def is_destructive(tool_name: str) -> bool:
-    return tool_name in DESTRUCTIVE
+def needs_approval(tool_name: str, args: dict | None = None) -> bool:
+    """Does this tool call require the user's approval before running?
+
+    Name-based for always-destructive tools; write_file gates only when it
+    would overwrite an existing file.
+    """
+    if tool_name in DESTRUCTIVE:
+        return True
+    return tool_name == "write_file" and bool((args or {}).get("overwrite"))
 
 
 def dry_run() -> bool:

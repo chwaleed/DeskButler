@@ -109,3 +109,20 @@ def test_move_file_dry_run_does_not_move(tmp_path, monkeypatch):
     result = tools.move_file.invoke({"src": str(src), "dst": str(dst)})
     assert "dry-run" in result.lower()
     assert src.exists() and not dst.exists()
+
+
+def test_needs_approval_matrix():
+    from agent.safety import needs_approval
+    # Name-based destructive tools always gate.
+    assert needs_approval("move_file", {})
+    assert needs_approval("delete_file", {})
+    assert needs_approval("batch_move", {"moves": [{"src": "a", "dst": "b"}]})
+    # Read-only / creating tools don't.
+    assert not needs_approval("list_dir", {})
+    assert not needs_approval("copy_file", {})
+    # write_file gates ONLY when overwriting.
+    assert not needs_approval("write_file", {"path": "a.txt", "content": "x"})
+    assert not needs_approval("write_file", {"overwrite": False})
+    assert needs_approval("write_file", {"overwrite": True})
+    # Missing args tolerated.
+    assert not needs_approval("write_file", None)

@@ -159,6 +159,7 @@ def create_folder(path: str) -> str:
         audit({"tool": "create_folder", "path": path, "result": "denied", "error": str(e)})
         return f"Denied: {e}"
     if p.exists():
+        audit({"tool": "create_folder", "path": str(p), "result": "already-exists"})
         return f"Already exists: {p}"
     if dry_run():
         audit({"tool": "create_folder", "path": str(p), "result": "dry-run"})
@@ -184,6 +185,7 @@ def copy_file(src: str, dst: str) -> str:
         audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "denied", "error": "forbidden extension"})
         return f"Denied: cannot copy to an executable/script destination ({dst_p.suffix})"
     if not src_p.exists():
+        audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "not-found"})
         return f"Not found: {src_p}"
     if dst_p.exists():
         audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "denied", "error": "destination exists"})

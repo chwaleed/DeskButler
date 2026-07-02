@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from agent.graph import build_graph
+from agent.settings import app_data_dir
 
 THREAD_ID = "main"
 
@@ -19,6 +20,7 @@ class Runtime:
         self._emit = emit
         self._loop: asyncio.AbstractEventLoop | None = None
         self._graph = None
+        self._saver_cm = None
         self._busy = False
         self._current_turn: str | None = None
         self._config = {"configurable": {"thread_id": THREAD_ID}}
@@ -29,12 +31,20 @@ class Runtime:
         def run_loop():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
-            self._graph = build_graph()
+            self._loop.run_until_complete(self._setup())
             ready.set()
             self._loop.run_forever()
 
         threading.Thread(target=run_loop, daemon=True, name="agent-loop").start()
         ready.wait(timeout=30)
+
+    async def _setup(self) -> None:
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        # Enter the async saver's context and keep it open for the loop's lifetime.
+        self._saver_cm = AsyncSqliteSaver.from_conn_string(str(app_data_dir() / "checkpoints.db"))
+        saver = await self._saver_cm.__aenter__()
+        self._graph = build_graph(checkpointer=saver)
 
     def send(self, text: str) -> str:
         if self._busy:
@@ -68,7 +78,7 @@ class Runtime:
                     name = event.get("name", "tool")
                     self._emit({"type": "step", "turn_id": turn_id, "text": f"running {name}…"})
             # After the stream, inspect state: paused (interrupt) or finished.
-            state = self._graph.get_state(self._config)
+            state = await self._graph.aget_state(self._config)
             if state.tasks and any(t.interrupts for t in state.tasks):
                 intr = next(t.interrupts[0] for t in state.tasks if t.interrupts)
                 self._emit({"type": "approval", "turn_id": turn_id, "request": intr.value})

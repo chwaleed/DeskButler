@@ -1,7 +1,6 @@
 """LangGraph agent loop: call_model -> safety_gate -> tools -> call_model."""
 from __future__ import annotations
 
-import sqlite3
 from typing import Literal
 
 from langchain_core.messages import SystemMessage, ToolMessage
@@ -11,7 +10,7 @@ from langgraph.types import interrupt
 
 from agent.prompts import SYSTEM_PROMPT
 from agent.safety import dry_run, is_destructive
-from agent.settings import app_data_dir, load_settings
+from agent.settings import load_settings
 from agent.tools import TOOLS
 
 
@@ -21,16 +20,8 @@ def _default_model():
     return ChatOllama(model=load_settings().model)
 
 
-def _default_checkpointer():
-    from langgraph.checkpoint.sqlite import SqliteSaver
-
-    conn = sqlite3.connect(str(app_data_dir() / "checkpoints.db"), check_same_thread=False)
-    return SqliteSaver(conn)
-
-
 def build_graph(model=None, checkpointer=None):
     model = model if model is not None else _default_model()
-    checkpointer = checkpointer if checkpointer is not None else _default_checkpointer()
     bound = model.bind_tools(TOOLS)
 
     def call_model(state: MessagesState):

@@ -37,9 +37,8 @@ overwriting) · 🔴 destructive (always gated).
 
 ## Phase 0 + build-step 1 — Shipped
 
-Shipped and unit-tested (48 backend tests). The read-only and creating tools
-work end to end with the real qwen3.5:2b model. See the **Known gap** below
-for a gate limitation that affects multi-file moves.
+Shipped and unit-tested (50 backend tests). Work end to end with the real
+qwen3.5:2b model, including multi-file moves via the grouped approval gate.
 
 | Tool | Args | Does | Risk |
 |---|---|---|---|
@@ -54,14 +53,13 @@ for a gate limitation that affects multi-file moves.
 | `delete_file` | `path` | Send to Recycle Bin — never hard delete; refuses allowed-root itself | 🔴 |
 | `batch_move` | `moves` (list of `{src, dst}`) | Whole organize plan in ONE gated call; per-item skip-and-report; capped at 200 | 🔴 |
 
-**Known gap (needs a decision before this is "done"):** the safety gate
-interrupts once *per destructive tool call*. When the 2B model emits several
-`move_file` calls in a single message (which it does instead of `batch_move`
-more often than not), approving the first one drops the rest — files silently
-don't move. `batch_move` avoids this (one call, one approval) but the model
-doesn't reliably choose it. Fix options: (a) gate collects all destructive
-calls in a message and shows ONE grouped approval, (b) force bulk file ops
-through `batch_move` only. Both touch the gate + runtime event + approval UI.
+**Grouped approval gate:** the 2B model often emits several `move_file` calls
+in one message instead of a single `batch_move`. The safety gate collects all
+destructive calls in a message and shows ONE approval listing every action;
+one Approve runs them all, one Reject cancels them all (and answers every
+tool_call so the model can continue). This is what makes multi-file moves
+work regardless of whether the model chose `batch_move` or repeated
+`move_file`.
 
 ## Phase 1 — remaining core file operations
 

@@ -79,7 +79,25 @@ def resolve_allowed(path: str, roots: list[str] | None = None) -> Path:
                     candidate = root.joinpath(*rest) if rest else root
                     log.info("resolve_allowed: %r -> matched root %s -> %s", raw, r, candidate)
                     return resolve_and_check(str(candidate), roots)
-    # Absolute, or no loose match — strict check (raises if outside roots).
+            # No segment named a root: the model is referring to a file *inside* an
+            # allowed folder by its plain name ("photo.jpg", "images\photo.jpg").
+            # Resolve it against the roots, never the backend's cwd. Prefer a root
+            # where the path already exists (a source), then one whose parent folder
+            # exists (a destination like "images\x" after Downloads\images was made),
+            # then the first root. resolve_and_check still blocks any `..` escape.
+            rel = Path(*segs)
+            for r in allowed:
+                if (Path(r) / rel).exists():
+                    log.info("resolve_allowed: %r -> found in root %s", raw, r)
+                    return resolve_and_check(str(Path(r) / rel), roots)
+            for r in allowed:
+                if (Path(r) / rel).parent.exists():
+                    log.info("resolve_allowed: %r -> parent in root %s", raw, r)
+                    return resolve_and_check(str(Path(r) / rel), roots)
+            if allowed:
+                log.info("resolve_allowed: %r -> default first root %s", raw, allowed[0])
+                return resolve_and_check(str(Path(allowed[0]) / rel), roots)
+    # Absolute (or no roots configured) — strict check (raises if outside roots).
     return resolve_and_check(raw, roots)
 
 

@@ -19,9 +19,44 @@ def test_resolve_allowed_still_denies_real_escape(tmp_path):
     root = tmp_path / "Downloads"
     root.mkdir()
     with pytest.raises(PathNotAllowed):
-        resolve_allowed("Secret", roots=[str(root)])  # no matching root
+        resolve_allowed(r"..\Secret", roots=[str(root)])  # relative escape above the root
+    with pytest.raises(PathNotAllowed):
+        resolve_allowed(r"..\..\Secret\x.txt", roots=[str(root)])  # deeper escape
     with pytest.raises(PathNotAllowed):
         resolve_allowed(r"C:\Windows\system32", roots=[str(root)])  # absolute, outside
+
+
+def test_resolve_allowed_bare_name_resolves_inside_root(tmp_path):
+    # The model refers to files by their bare name, meaning "inside my allowed folder".
+    # That must resolve into the root, not against the backend's cwd.
+    root = tmp_path / "Downloads"
+    root.mkdir()
+    (root / "photo.jpg").write_text("x")
+    assert resolve_allowed("photo.jpg", roots=[str(root)]) == (root / "photo.jpg").resolve()
+    # A file with spaces (like the real "11th Result.jpg") resolves the same way.
+    (root / "11th Result.jpg").write_text("x")
+    assert resolve_allowed("11th Result.jpg", roots=[str(root)]) == (root / "11th Result.jpg").resolve()
+
+
+def test_resolve_allowed_relative_subpath_for_new_destination(tmp_path):
+    # "images/photo.jpg" as a move destination (doesn't exist yet) resolves under the
+    # root whose parent subfolder exists — the organize-into-a-subfolder case.
+    root = tmp_path / "Downloads"
+    root.mkdir()
+    (root / "images").mkdir()
+    got = resolve_allowed(r"images\photo.jpg", roots=[str(root)])
+    assert got == (root / "images" / "photo.jpg").resolve()
+
+
+def test_resolve_allowed_prefers_root_where_file_exists(tmp_path):
+    # With several allowed roots, a bare name resolves to the root that actually has it.
+    downloads = tmp_path / "Downloads"
+    docs = tmp_path / "Documents"
+    downloads.mkdir()
+    docs.mkdir()
+    (docs / "report.pdf").write_text("x")
+    got = resolve_allowed("report.pdf", roots=[str(downloads), str(docs)])
+    assert got == (docs / "report.pdf").resolve()
 
 
 def test_path_inside_root_is_allowed(tmp_path):
@@ -134,5 +169,3 @@ def test_system_prompt_teaches_batch_and_rename():
     assert r"C:\Users\x\Downloads" in p
     assert "batch_move" in p
     assert "rename" in p.lower()
-    # Must warn against bare filenames — the 2B model emits them and they don't resolve.
-    assert "bare" in p.lower()

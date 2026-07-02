@@ -23,7 +23,7 @@ class Runtime:
         self._saver_cm = None
         self._busy = False
         self._current_turn: str | None = None
-        self._config = {"configurable": {"thread_id": THREAD_ID}}
+        self._config = {"configurable": {"thread_id": THREAD_ID}, "recursion_limit": 50}
 
     def start(self) -> None:
         ready = threading.Event()

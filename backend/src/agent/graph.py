@@ -8,7 +8,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.types import interrupt
 
-from agent.prompts import SYSTEM_PROMPT
+from agent.prompts import system_prompt
 from agent.safety import dry_run, is_destructive
 from agent.settings import load_settings
 from agent.tools import TOOLS
@@ -23,11 +23,12 @@ def _default_model():
 def build_graph(model=None, checkpointer=None):
     model = model if model is not None else _default_model()
     bound = model.bind_tools(TOOLS)
+    prompt = system_prompt(load_settings().allowed_roots)
 
     def call_model(state: MessagesState):
         msgs = state["messages"]
         if not any(isinstance(m, SystemMessage) for m in msgs):
-            msgs = [SystemMessage(SYSTEM_PROMPT), *msgs]
+            msgs = [SystemMessage(prompt), *msgs]
         return {"messages": [bound.invoke(msgs)]}
 
     def route_after_model(state: MessagesState) -> Literal["safety_gate", "__end__"]:

@@ -176,7 +176,46 @@ The "butler" part: open things, tell me about my machine.
 | `clipboard_read` / `clipboard_write` | — / `text` | Read/set clipboard ("put that path on my clipboard") | 🟢 / 🟡 |
 | `empty_recycle_bin` | — | Permanently purge — the one truly irreversible tool | 🔴 always |
 
-## Phase 7 — Automation (features, not tools)
+## Phase 7 — Process & network control (task manager)
+
+Developer-grade control over the machine: "what's hogging port 3000, kill
+it", "what's eating my RAM", "start the dev server". All of it rides on
+`psutil` (one dependency covers processes, ports, and network).
+
+| Tool | Args | Does | Risk |
+|---|---|---|---|
+| `list_processes` | `sort_by=memory` | Top ~25 by memory/CPU: name, PID, mem, CPU% | 🟢 |
+| `process_info` | `name_or_pid` | Details for one process: path, started, mem, CPU, open ports | 🟢 |
+| `check_port` | `port` | What's listening on it — process name + PID, or "free" | 🟢 |
+| `kill_process` | `name_or_pid` | Terminate (graceful, then force after timeout) | 🔴 |
+| `kill_port` | `port` | `check_port` + kill in one step — the "port 3000 is stuck" fix | 🔴 |
+| `run_app` | `path, args` | Launch any exe with arguments, detached — beyond the Phase 6 registry | 🔴 |
+| `list_services` | `filter` | Windows services: name, status, startup type (capped) | 🟢 |
+| `service_control` | `name, action` | start / stop / restart a service | 🔴 |
+| `network_info` | — | Local IPs, adapters, gateway, active connection count | 🟢 |
+| `env_var` | `name` | Read an environment variable ("what's my JAVA_HOME?") | 🟢 |
+| `startup_apps` | — | List programs that launch at boot (read-only) | 🟢 |
+| `lock_screen` | — | Lock the workstation | 🟢 |
+| `power_action` | `action` | sleep / restart / shutdown | 🔴 |
+
+Notes:
+- **Protected-process denylist** inside `kill_process`/`kill_port`: refuse
+  system-critical processes (`csrss`, `wininit`, `winlogon`, `lsass`,
+  `services`, `svchost`, PID ≤ 4), refuse anything in DeskButler's own
+  process tree, and refuse `ollama` — killing the model mid-conversation is
+  a self-lobotomy the agent shouldn't be able to perform.
+- `kill_process` on an ambiguous name (3 × `node.exe`) must not guess: it
+  returns the matching list and asks the user to pick a PID. Same
+  determinism rule as paths — the tool disambiguates, never the model.
+- `run_app` is gated because "run any exe" is exactly what malware wants.
+  The approval card shows the full path + args. Forbidden: anything inside
+  Windows/system directories.
+- `service_control` and `power_action` need elevation for some targets —
+  return the clear error, never attempt UAC bypasses.
+- Setting env vars, editing startup entries: both are registry writes —
+  still out of scope. Read-only is the line.
+
+## Phase 8 — Automation (features, not tools)
 
 These are app capabilities the agent configures, not `@tool` functions the
 model calls mid-chat:
@@ -196,9 +235,11 @@ model calls mid-chat:
 - **Web search / browsing** — breaks the "fully local, nothing leaves your
   computer" promise the UI makes. Revisit only as an explicit opt-in.
 - **Email / calendar / messaging** — different product.
-- **Registry edits, service control, killing processes, disk formatting,
-  installing software** — no. The failure mode of a 2B model with these is
-  a broken machine.
+- **Registry edits, disk formatting, installing/uninstalling software,
+  UAC/elevation tricks** — no. The failure mode of a small model with these
+  is a broken machine. (Process/service control moved *in* scope — Phase 7 —
+  because it's gated, denylisted, and recoverable with a reboot. Registry
+  and disk damage are not.)
 - **Arbitrary unsandboxed shell** — `run_command`'s allowlist is the
   ceiling, permanently.
 
@@ -214,7 +255,10 @@ model calls mid-chat:
    alone is ~11 tools.
 4. **Phase 5** — `init_project` first, `run_command` last.
 5. **Phase 6** — cheap wins, sprinkle in anytime (each is ~20 lines).
-6. **Phase 7** — only after bulk organize proves itself.
+6. **Phase 7** — read-only half first (`check_port`, `list_processes`,
+   `network_info` — zero risk, instant developer value), kill/run/service
+   control after the approval UX has proven itself on file operations.
+7. **Phase 8** — only after bulk organize proves itself.
 
 Every phase = new `@tool` functions in `tools.py` + a line in the system
 prompt + tests in `test_safety.py`/`test_gate.py`. Nothing else changes.

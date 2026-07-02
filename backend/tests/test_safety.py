@@ -126,3 +126,11 @@ def test_needs_approval_matrix():
     assert needs_approval("write_file", {"overwrite": True})
     # Missing args tolerated.
     assert not needs_approval("write_file", None)
+
+
+def test_system_prompt_teaches_batch_and_rename():
+    from agent.prompts import system_prompt
+    p = system_prompt([r"C:\Users\x\Downloads"])
+    assert r"C:\Users\x\Downloads" in p
+    assert "batch_move" in p
+    assert "rename" in p.lower()

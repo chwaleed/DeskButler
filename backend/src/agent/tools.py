@@ -104,6 +104,7 @@ def read_file(path: str) -> str:
         audit({"tool": "read_file", "path": path, "result": "denied", "error": str(e)})
         return f"Denied: {e}"
     if not p.is_file():
+        audit({"tool": "read_file", "path": str(p), "result": "not-a-file"})
         return f"Not a file: {p}"
     with p.open("rb") as fh:
         raw = fh.read(4 * MAX_READ)
@@ -128,6 +129,7 @@ def file_info(path: str) -> str:
         audit({"tool": "file_info", "path": path, "result": "denied", "error": str(e)})
         return f"Denied: {e}"
     if not p.exists():
+        audit({"tool": "file_info", "path": str(p), "result": "not-found"})
         return f"Not found: {p}"
     st = p.stat()
     kind = "folder" if p.is_dir() else f"file ({p.suffix.lower() or 'no extension'})"

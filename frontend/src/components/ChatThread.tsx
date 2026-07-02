@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 export type Msg = { role: "user" | "agent"; text: string };
 
@@ -68,7 +69,9 @@ export function ChatThread({
             <div className="font-mono text-[10.5px] tracking-[1.2px] uppercase text-primary">
               DeskButler
             </div>
-            <div className="whitespace-pre-wrap break-words text-pretty">{m.text}</div>
+            <div className="prose prose-invert prose-sm max-w-none break-words prose-pre:bg-card prose-pre:border prose-code:font-mono prose-headings:text-foreground prose-strong:text-foreground text-foreground">
+              <ReactMarkdown>{m.text}</ReactMarkdown>
+            </div>
           </div>
         ),
       )}

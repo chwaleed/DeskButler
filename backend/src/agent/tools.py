@@ -265,4 +265,46 @@ def delete_file(path: str) -> str:
     return f"Sent {p.name} to the Recycle Bin (recoverable)"
 
 
-TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file, delete_file]
+@tool
+def folder_stats(path: str) -> str:
+    """Summarize a folder: file count and total size grouped by extension, recursive. Read-only.
+
+    Use this to get an overview before organizing a folder.
+    """
+    log.info("folder_stats(path=%r)", path)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        audit({"tool": "folder_stats", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if not p.is_dir():
+        return f"Not a directory: {p}"
+    by_ext: dict[str, list[int]] = {}
+    count = total = 0
+    MAX_FILES = 50_000  # ponytail: hard stop so a mistaken root doesn't walk a whole drive
+    for f in p.rglob("*"):
+        if not f.is_file():
+            continue
+        try:
+            sz = f.stat().st_size
+        except OSError:
+            sz = 0
+        e = by_ext.setdefault(f.suffix.lower() or "(none)", [0, 0])
+        e[0] += 1
+        e[1] += sz
+        count += 1
+        total += sz
+        if count >= MAX_FILES:
+            break
+    audit({"tool": "folder_stats", "path": str(p), "result": "ok", "files": count})
+    if count == 0:
+        return f"{p} is empty (no files)"
+    rows = sorted(by_ext.items(), key=lambda kv: kv[1][1], reverse=True)
+    lines = [f"{count} files, {_fmt_size(total)} total (recursive)"]
+    lines += [f"{ext}: {n} files, {_fmt_size(sz)}" for ext, (n, sz) in rows[:20]]
+    if len(rows) > 20:
+        lines.append(f"…{len(rows) - 20} more extensions")
+    return "\n".join(lines)
+
+
+TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file, write_file, delete_file, folder_stats]

@@ -195,3 +195,30 @@ def test_delete_file_missing_path(sandbox, monkeypatch):
                         lambda p: pytest.fail("recycle_delete must not run on a missing path"))
     out = tools.delete_file.invoke({"path": str(root / "ghost.txt")})
     assert "Not found" in out
+
+
+# ---- folder_stats ----
+
+def test_folder_stats_groups_by_extension(sandbox):
+    root, _ = sandbox
+    (root / "a.jpg").write_bytes(b"x" * 1000)
+    (root / "b.jpg").write_bytes(b"x" * 1000)
+    (root / "c.pdf").write_bytes(b"x" * 5000)
+    (root / "sub").mkdir()
+    (root / "sub" / "d.jpg").write_bytes(b"x" * 1000)  # recursive
+    out = tools.folder_stats.invoke({"path": str(root)})
+    assert "4 files" in out
+    assert ".jpg: 3 files" in out
+    assert ".pdf: 1 files" in out
+
+
+def test_folder_stats_handles_no_extension(sandbox):
+    root, _ = sandbox
+    (root / "README").write_bytes(b"x")
+    out = tools.folder_stats.invoke({"path": str(root)})
+    assert "(none): 1 files" in out
+
+
+def test_folder_stats_denies_outside_roots(sandbox):
+    out = tools.folder_stats.invoke({"path": r"C:\Windows"})
+    assert out.startswith("Denied:")

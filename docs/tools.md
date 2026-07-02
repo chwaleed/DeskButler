@@ -215,21 +215,6 @@ Notes:
 - Setting env vars, editing startup entries: both are registry writes —
   still out of scope. Read-only is the line.
 
-## Phase 8 — Automation (features, not tools)
-
-These are app capabilities the agent configures, not `@tool` functions the
-model calls mid-chat:
-
-- **Watch folders** — "whenever something lands in Downloads, apply my
-  organize rules." A background watcher that replays a saved `batch_move`
-  plan (with notification + undo, or queued approval).
-- **Saved routines** — name a multi-step flow ("my weekly cleanup") and
-  re-run it by name.
-- **Scheduled runs** — routines on a timer.
-- **Undo log** — because `batch_move` records every `src → dst`, an
-  `undo_last` command is nearly free. Worth pulling forward if bulk
-  organizes see real use.
-
 ## Explicitly out of scope
 
 - **Web search / browsing** — breaks the "fully local, nothing leaves your
@@ -258,7 +243,6 @@ model calls mid-chat:
 6. **Phase 7** — read-only half first (`check_port`, `list_processes`,
    `network_info` — zero risk, instant developer value), kill/run/service
    control after the approval UX has proven itself on file operations.
-7. **Phase 8** — only after bulk organize proves itself.
 
 Every phase = new `@tool` functions in `tools.py` + a line in the system
 prompt + tests in `test_safety.py`/`test_gate.py`. Nothing else changes.

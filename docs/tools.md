@@ -101,13 +101,51 @@ Working *with* file contents, not just file names.
 | `read_docx` | `path` | Extract text (python-docx), capped | 🟢 |
 | `zip_create` | `src, dst` | Zip a folder/file (stdlib `shutil.make_archive`) | 🟡 |
 | `zip_extract` | `archive, dst` | Extract into a new folder; refuse path-traversal entries | 🟡 |
-| `convert_image` | `src, dst` | Format convert / resize via Pillow ("make this PNG a JPEG") | 🟡 |
+| `convert_image` | `src, dst` | Format convert via Pillow ("make this PNG a JPEG") | 🟡 |
+| `resize_image` | `src, dst, max_size` | Scale down to fit `max_size` px, keep aspect ratio | 🟡 |
+| `compress_image` | `src, dst, quality` | Re-encode at lower quality ("shrink this to email it") | 🟡 |
+| `image_info` | `path` | Dimensions, format, DPI, EXIF summary (camera, GPS present?) | 🟢 |
 
 Note: "summarize", "translate", "explain" are **not tools** — they're the
 model reading `read_file`/`read_pdf` output. Don't build tools for what the
-model already does.
+model already does. Same for unit conversion, text case changes, word counts
+of pasted text — pure reasoning, zero tools.
 
-## Phase 4 — Developer tools
+## Phase 4 — Local utilities (skip the website)
+
+Everyday jobs people paste files into random websites for. Doing them
+locally is exactly DeskButler's pitch: your files never leave the machine.
+Almost all of these ride on deps we'd already have (Pillow, pypdf) or the
+stdlib.
+
+| Tool | Args | Does | Risk |
+|---|---|---|---|
+| `merge_pdf` | `paths, dst` | Combine PDFs into one (pypdf) | 🟡 |
+| `split_pdf` | `src, pages, dst` | Extract a page range ("pages 2–5 as a new file") | 🟡 |
+| `images_to_pdf` | `paths, dst` | Photos/scans → one PDF (Pillow) | 🟡 |
+| `pdf_to_images` | `src, dst_folder` | Render pages as PNGs (pypdfium2) | 🟡 |
+| `strip_metadata` | `src, dst` | Copy image/PDF minus EXIF/GPS/author — the privacy tool | 🟡 |
+| `file_hash` | `path, algo=sha256` | Checksum for verifying downloads (stdlib hashlib) | 🟢 |
+| `qr_code` | `text, dst` | Generate a QR code PNG (`qrcode` lib, tiny) | 🟡 |
+| `generate_password` | `length=20` | Cryptographically random password (stdlib `secrets`) — never let the model invent one | 🟢 |
+| `ocr_image` | `path` | Image → text via Tesseract, capped — enables "read this screenshot" | 🟢 |
+| `media_convert` | `src, dst` | Audio/video conversion + audio extraction via ffmpeg ("mp4 → mp3") | 🟡 |
+| `media_info` | `path` | Duration, resolution, codec, bitrate (ffprobe) | 🟢 |
+
+Notes:
+- `ocr_image` and `media_convert`/`media_info` need external binaries
+  (Tesseract, ffmpeg). The tool checks for them and returns "not installed —
+  install X to enable this" instead of failing cryptically. They register
+  only when found, so they don't eat tool-count budget on machines without
+  them.
+- `generate_password` exists because an LLM sampling "random" characters is
+  not random. Determinism boundary: randomness comes from `secrets`, never
+  the model.
+- Compress-PDF is deliberately absent — real PDF compression is a rabbit
+  hole (ghostscript). `strip_metadata` + re-save covers the common case;
+  revisit if users actually ask.
+
+## Phase 5 — Developer tools
 
 "Init a Python project", "set up a React app", "what's the git status here".
 
@@ -124,7 +162,7 @@ Notes:
 - `run_command` ships **last** in this phase, and only with the allowlist.
   No `cmd /c`, no PowerShell strings, no pipes.
 
-## Phase 5 — System & apps
+## Phase 6 — System & apps
 
 The "butler" part: open things, tell me about my machine.
 
@@ -138,7 +176,7 @@ The "butler" part: open things, tell me about my machine.
 | `clipboard_read` / `clipboard_write` | — / `text` | Read/set clipboard ("put that path on my clipboard") | 🟢 / 🟡 |
 | `empty_recycle_bin` | — | Permanently purge — the one truly irreversible tool | 🔴 always |
 
-## Phase 6 — Automation (features, not tools)
+## Phase 7 — Automation (features, not tools)
 
 These are app capabilities the agent configures, not `@tool` functions the
 model calls mid-chat:
@@ -171,9 +209,12 @@ model calls mid-chat:
    still inside the 2B comfort zone.
 2. **Rest of Phase 2, then Phase 3** — search and content. Around here,
    evaluate 4b-by-default or tool groups in settings.
-3. **Phase 4** — `init_project` first, `run_command` last.
-4. **Phase 5** — cheap wins, sprinkle in anytime (each is ~20 lines).
-5. **Phase 6** — only after bulk organize proves itself.
+3. **Phase 4** — local utilities. Independent of each other; pick by demand.
+   By now tool groups in settings are mandatory, not optional — this phase
+   alone is ~11 tools.
+4. **Phase 5** — `init_project` first, `run_command` last.
+5. **Phase 6** — cheap wins, sprinkle in anytime (each is ~20 lines).
+6. **Phase 7** — only after bulk organize proves itself.
 
 Every phase = new `@tool` functions in `tools.py` + a line in the system
 prompt + tests in `test_safety.py`/`test_gate.py`. Nothing else changes.

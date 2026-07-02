@@ -4,7 +4,10 @@ export type AgentEvent = {
   text?: string;
   t?: string; // step timestamp (HH:MM:SS), set by the backend
   out?: string; // tool output for expandable console view
-  request?: { tool: string; args: Record<string, unknown>; message: string };
+  request?: {
+    actions: { tool: string; args: Record<string, unknown> }[];
+    message: string;
+  };
 };
 
 export type Settings = {

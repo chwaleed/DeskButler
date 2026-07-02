@@ -3,6 +3,23 @@ import { Button } from "@/components/ui/button";
 
 export type Req = { tool: string; args: Record<string, unknown>; message: string };
 
+function ArgValue({ v }: { v: unknown }) {
+  if (Array.isArray(v)) {
+    return (
+      <div className="max-h-44 overflow-y-auto mt-1 flex flex-col gap-0.5 border-l-2 border-warning/40 pl-2.5">
+        {v.map((item, i) => (
+          <div key={i} className="break-all">
+            {item !== null && typeof item === "object" && "src" in item
+              ? `${(item as { src?: unknown }).src} → ${(item as { dst?: unknown }).dst}`
+              : String(item)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <>{String(v)}</>;
+}
+
 export function ApprovalCard({
   request,
   onApprove,
@@ -27,8 +44,12 @@ export function ApprovalCard({
         <div className="font-mono text-xs leading-[1.7] bg-background border rounded-lg px-3.5 py-2.5 mb-3">
           {Object.entries(request.args).map(([k, v]) => (
             <div key={k} className="break-all">
-              <span className="text-muted-foreground/60">{k}: </span>
-              {String(v)}
+              <span className="text-muted-foreground/60">
+                {k}
+                {Array.isArray(v) ? ` (${v.length} items)` : ""}
+                {": "}
+              </span>
+              <ArgValue v={v} />
             </div>
           ))}
         </div>

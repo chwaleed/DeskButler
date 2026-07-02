@@ -5,8 +5,8 @@ export type Msg = { role: "user" | "agent"; text: string };
 
 const SUGGESTIONS = [
   "List my Downloads",
-  "Move report.pdf to Documents",
-  "What's in my Documents folder?",
+  "Organize my Downloads: images into an Images folder, PDFs into Documents",
+  "What's taking up space in my Documents folder?",
 ];
 
 function EmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import shutil
+import stat as stat_mod
+from datetime import datetime
 from pathlib import Path
 
 from langchain_core.tools import tool
@@ -12,6 +14,16 @@ from agent.safety import PathNotAllowed, audit, dry_run, resolve_allowed
 log = get_logger("tools")
 
 FORBIDDEN_DST_EXT = {".exe", ".dll", ".bat", ".cmd", ".ps1", ".scr", ".lnk"}
+
+MAX_READ = 10_000  # chars returned to the model; more overflows a 16k context fast
+
+
+def _fmt_size(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} GB"
 
 
 @tool
@@ -77,4 +89,62 @@ def move_file(src: str, dst: str) -> str:
     return f"Moved {src_p.name} to {dst_p}"
 
 
-TOOLS = [list_dir, move_file]
+@tool
+def read_file(path: str) -> str:
+    """Read a text file's content. Read-only. Binary files are refused; long files are truncated.
+
+    `path` may be a full path inside an allowed folder, or a loose name that is
+    matched to an allowed folder.
+    """
+    log.info("read_file(path=%r)", path)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        log.warning("read_file DENIED: %s", e)
+        audit({"tool": "read_file", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if not p.is_file():
+        return f"Not a file: {p}"
+    with p.open("rb") as fh:
+        raw = fh.read(4 * MAX_READ)
+    if b"\x00" in raw[:8192]:
+        audit({"tool": "read_file", "path": str(p), "result": "refused-binary"})
+        return f"Refused: {p.name} looks like a binary file"
+    text = raw.decode("utf-8", errors="replace")
+    total = p.stat().st_size
+    audit({"tool": "read_file", "path": str(p), "result": "ok", "bytes": total})
+    if len(text) > MAX_READ or total > len(raw):
+        return text[:MAX_READ] + f"\n…truncated ({_fmt_size(total)} total)"
+    return text
+
+
+@tool
+def file_info(path: str) -> str:
+    """Show a file or folder's size, type, and created/modified dates. Read-only."""
+    log.info("file_info(path=%r)", path)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        audit({"tool": "file_info", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if not p.exists():
+        return f"Not found: {p}"
+    st = p.stat()
+    kind = "folder" if p.is_dir() else f"file ({p.suffix.lower() or 'no extension'})"
+    size = "-" if p.is_dir() else _fmt_size(st.st_size)
+    fmt = "%Y-%m-%d %H:%M"
+    lines = [
+        str(p),
+        f"type: {kind}",
+        f"size: {size}",
+        f"created: {datetime.fromtimestamp(st.st_ctime).strftime(fmt)}",
+        f"modified: {datetime.fromtimestamp(st.st_mtime).strftime(fmt)}",
+    ]
+    attrs = getattr(st, "st_file_attributes", 0)
+    if hasattr(stat_mod, "FILE_ATTRIBUTE_HIDDEN") and attrs & stat_mod.FILE_ATTRIBUTE_HIDDEN:
+        lines.append("hidden: yes")
+    audit({"tool": "file_info", "path": str(p), "result": "ok"})
+    return "\n".join(lines)
+
+
+TOOLS = [list_dir, move_file, read_file, file_info]

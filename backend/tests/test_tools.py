@@ -49,3 +49,61 @@ def test_file_info_on_folder(sandbox):
     root, _ = sandbox
     out = tools.file_info.invoke({"path": str(root)})
     assert "folder" in out
+
+
+# ---- create_folder ----
+
+def test_create_folder_creates_with_parents(sandbox):
+    root, _ = sandbox
+    target = root / "sorted" / "images"
+    out = tools.create_folder.invoke({"path": str(target)})
+    assert target.is_dir()
+    assert "Created" in out
+
+
+def test_create_folder_noop_if_exists(sandbox):
+    root, _ = sandbox
+    out = tools.create_folder.invoke({"path": str(root)})
+    assert "Already exists" in out
+
+
+def test_create_folder_dry_run(sandbox):
+    root, settings = sandbox
+    settings.dry_run = True
+    target = root / "newdir"
+    out = tools.create_folder.invoke({"path": str(target)})
+    assert "[dry-run]" in out
+    assert not target.exists()
+
+
+# ---- copy_file ----
+
+def test_copy_file_copies(sandbox):
+    root, _ = sandbox
+    src = root / "a.txt"
+    src.write_text("data")
+    dst = root / "backup" / "a.txt"
+    out = tools.copy_file.invoke({"src": str(src), "dst": str(dst)})
+    assert dst.read_text() == "data"
+    assert src.exists()  # copy, not move
+    assert "Copied" in out
+
+
+def test_copy_file_refuses_existing_destination(sandbox):
+    root, _ = sandbox
+    src = root / "a.txt"
+    src.write_text("new")
+    dst = root / "b.txt"
+    dst.write_text("old")
+    out = tools.copy_file.invoke({"src": str(src), "dst": str(dst)})
+    assert "Denied" in out
+    assert dst.read_text() == "old"
+
+
+def test_copy_file_copies_folder(sandbox):
+    root, _ = sandbox
+    (root / "proj").mkdir()
+    (root / "proj" / "f.txt").write_text("x")
+    out = tools.copy_file.invoke({"src": str(root / "proj"), "dst": str(root / "proj2")})
+    assert (root / "proj2" / "f.txt").read_text() == "x"
+    assert "Copied" in out

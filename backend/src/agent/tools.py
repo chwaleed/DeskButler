@@ -149,4 +149,56 @@ def file_info(path: str) -> str:
     return "\n".join(lines)
 
 
-TOOLS = [list_dir, move_file, read_file, file_info]
+@tool
+def create_folder(path: str) -> str:
+    """Create a folder, including missing parent folders. Does nothing if it already exists."""
+    log.info("create_folder(path=%r)", path)
+    try:
+        p = resolve_allowed(path)
+    except PathNotAllowed as e:
+        audit({"tool": "create_folder", "path": path, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if p.exists():
+        return f"Already exists: {p}"
+    if dry_run():
+        audit({"tool": "create_folder", "path": str(p), "result": "dry-run"})
+        return f"[dry-run] would create folder {p}"
+    p.mkdir(parents=True, exist_ok=True)
+    log.info("create_folder OK: %s", p)
+    audit({"tool": "create_folder", "path": str(p), "result": "ok"})
+    return f"Created folder {p}"
+
+
+@tool
+def copy_file(src: str, dst: str) -> str:
+    """Copy a file or folder from src to dst. Fails if the destination already exists."""
+    log.info("copy_file(src=%r, dst=%r)", src, dst)
+    try:
+        src_p = resolve_allowed(src)
+        dst_p = resolve_allowed(dst)
+    except PathNotAllowed as e:
+        log.warning("copy_file DENIED: %s", e)
+        audit({"tool": "copy_file", "src": src, "dst": dst, "result": "denied", "error": str(e)})
+        return f"Denied: {e}"
+    if dst_p.suffix.lower() in FORBIDDEN_DST_EXT:
+        audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "denied", "error": "forbidden extension"})
+        return f"Denied: cannot copy to an executable/script destination ({dst_p.suffix})"
+    if not src_p.exists():
+        return f"Not found: {src_p}"
+    if dst_p.exists():
+        audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "denied", "error": "destination exists"})
+        return f"Denied: destination already exists ({dst_p})"
+    if dry_run():
+        audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "dry-run"})
+        return f"[dry-run] would copy {src_p.name} to {dst_p}"
+    dst_p.parent.mkdir(parents=True, exist_ok=True)
+    if src_p.is_dir():
+        shutil.copytree(str(src_p), str(dst_p))
+    else:
+        shutil.copy2(str(src_p), str(dst_p))
+    log.info("copy_file OK: %s -> %s", src_p, dst_p)
+    audit({"tool": "copy_file", "src": str(src_p), "dst": str(dst_p), "result": "ok"})
+    return f"Copied {src_p.name} to {dst_p}"
+
+
+TOOLS = [list_dir, move_file, read_file, file_info, create_folder, copy_file]

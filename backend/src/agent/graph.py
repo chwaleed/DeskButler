@@ -17,7 +17,9 @@ from agent.tools import TOOLS
 def _default_model():
     from langchain_ollama import ChatOllama
 
-    return ChatOllama(model=load_settings().model)
+    # reasoning=False disables qwen3.5's thinking mode (Ollama `think: false`):
+    # faster, and a small model is steadier calling tools without a think preamble.
+    return ChatOllama(model=load_settings().model, reasoning=False)
 
 
 def build_graph(model=None, checkpointer=None):

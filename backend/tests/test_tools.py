@@ -284,3 +284,20 @@ def test_batch_move_rejects_empty_and_oversized(sandbox):
     assert "Denied" in tools.batch_move.invoke({"moves": []})
     too_many = [{"src": f"a{i}", "dst": f"b{i}"} for i in range(201)]
     assert "Denied" in tools.batch_move.invoke({"moves": too_many})
+
+
+def test_batch_move_skips_malformed_items(sandbox):
+    root, _ = sandbox
+    (root / "real.txt").write_text("x")
+    moves = [
+        None,                                              # null item
+        {"dst": str(root / "a.txt")},                      # missing src key
+        {"src": None, "dst": str(root / "b.txt")},         # null src
+        {"src": 123, "dst": str(root / "c.txt")},          # non-string src
+        {"src": str(root / "real.txt"), "dst": str(root / "sorted" / "real.txt")},  # valid
+    ]
+    out = tools.batch_move.func(moves)   # .func bypasses pydantic arg-coercion to exercise the loop's own guards
+    assert (root / "sorted" / "real.txt").exists()         # the one valid move happened
+    assert not (root / "real.txt").exists()
+    assert "Moved 1 of 5" in out
+    assert "Skipped 4" in out

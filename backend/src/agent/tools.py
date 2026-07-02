@@ -279,6 +279,7 @@ def folder_stats(path: str) -> str:
         audit({"tool": "folder_stats", "path": path, "result": "denied", "error": str(e)})
         return f"Denied: {e}"
     if not p.is_dir():
+        audit({"tool": "folder_stats", "path": str(p), "result": "not-a-directory"})
         return f"Not a directory: {p}"
     by_ext: dict[str, list[int]] = {}
     count = total = 0
@@ -351,8 +352,14 @@ def batch_move(moves: list[dict] | str) -> str:
         if dr:
             done.append(f"[dry-run] {src_p.name} -> {dst_p}")
             continue
-        dst_p.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src_p), str(dst_p))
+        try:
+            dst_p.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src_p), str(dst_p))
+        except OSError as e:
+            # A locked/open file is ordinary when organizing Downloads — skip it
+            # and report, never abort the rest of the batch.
+            skipped.append(f"{src_p.name}: {e}")
+            continue
         done.append(f"{src_p.name} -> {dst_p}")
     log.info("batch_move OK: %d moved, %d skipped", len(done), len(skipped))
     audit({"tool": "batch_move", "result": "dry-run" if dr else "ok",

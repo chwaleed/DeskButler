@@ -63,8 +63,10 @@ def build_graph(model=None, checkpointer=None):
             }
         )
         if isinstance(decision, dict) and decision.get("decision") == "reject":
-            # Reject the whole group: answer EVERY tool_call so none is left dangling
-            # (an unanswered tool_call makes the next model turn error).
+            # Reject cancels the WHOLE group (any non-destructive calls bundled in
+            # the same message are cancelled too — reject means "don't do this plan").
+            # Answer EVERY tool_call so none is left dangling (an unanswered
+            # tool_call makes the next model turn error).
             return {
                 "messages": [
                     ToolMessage(content="Rejected by user.", tool_call_id=c["id"])

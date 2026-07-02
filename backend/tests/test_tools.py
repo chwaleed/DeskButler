@@ -301,3 +301,28 @@ def test_batch_move_skips_malformed_items(sandbox):
     assert not (root / "real.txt").exists()
     assert "Moved 1 of 5" in out
     assert "Skipped 4" in out
+
+
+def test_batch_move_skips_locked_file_without_aborting(sandbox, monkeypatch):
+    # A locked/open file raises OSError mid-move on Windows. That item must be
+    # skipped-and-reported, and the rest of the batch must still move.
+    root, _ = sandbox
+    (root / "locked.txt").write_text("x")
+    (root / "free.txt").write_text("x")
+    real_move = tools.shutil.move
+
+    def flaky_move(src, dst):
+        if "locked.txt" in src:
+            raise PermissionError("file in use by another process")
+        return real_move(src, dst)
+
+    monkeypatch.setattr("agent.tools.shutil.move", flaky_move)
+    out = tools.batch_move.func([
+        {"src": str(root / "locked.txt"), "dst": str(root / "sorted" / "locked.txt")},
+        {"src": str(root / "free.txt"), "dst": str(root / "sorted" / "free.txt")},
+    ])
+    assert (root / "sorted" / "free.txt").exists()   # the healthy move completed
+    assert (root / "locked.txt").exists()            # the locked one stayed put
+    assert "Moved 1 of 2" in out
+    assert "Skipped 1" in out
+    assert "in use" in out                           # the OSError message is reported

@@ -5,6 +5,12 @@ export type AgentEvent = {
   request?: { tool: string; args: Record<string, unknown>; message: string };
 };
 
+export type Settings = {
+  allowed_roots: string[];
+  model: string;
+  dry_run: boolean;
+};
+
 declare global {
   interface Window {
     pywebview?: { api: Record<string, (...args: unknown[]) => Promise<unknown>> };
@@ -45,11 +51,11 @@ export async function cancel(): Promise<void> {
   await ready();
   await window.pywebview!.api.cancel();
 }
-export async function getSettings(): Promise<any> {
+export async function getSettings(): Promise<Settings> {
   await ready();
-  return window.pywebview!.api.get_settings() as Promise<any>;
+  return window.pywebview!.api.get_settings() as Promise<Settings>;
 }
-export async function saveSettings(data: any): Promise<void> {
+export async function saveSettings(data: Settings): Promise<void> {
   await ready();
   await window.pywebview!.api.save_settings(data);
 }

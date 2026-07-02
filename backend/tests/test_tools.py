@@ -1,4 +1,6 @@
 """Tests for the file tools. All run against the `sandbox` fixture (conftest.py)."""
+import pytest
+
 from agent import tools
 
 
@@ -187,7 +189,9 @@ def test_delete_file_dry_run(sandbox, monkeypatch):
     assert trashed == [] and f.exists()
 
 
-def test_delete_file_missing_path(sandbox):
+def test_delete_file_missing_path(sandbox, monkeypatch):
     root, _ = sandbox
+    monkeypatch.setattr("agent.tools.recycle_delete",
+                        lambda p: pytest.fail("recycle_delete must not run on a missing path"))
     out = tools.delete_file.invoke({"path": str(root / "ghost.txt")})
     assert "Not found" in out

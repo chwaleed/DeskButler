@@ -90,7 +90,8 @@ def recycle_delete(path: Path) -> None:
 
 def is_allowed_root(p: Path) -> bool:
     """Is p exactly one of the configured allowed roots (not merely inside one)?"""
-    return any(str(p).casefold() == str(Path(r).resolve()).casefold()
+    resolved = p.resolve()  # defensive: callers shouldn't have to pre-resolve a security check
+    return any(str(resolved).casefold() == str(Path(r).resolve()).casefold()
                for r in load_settings().allowed_roots)
 
 
